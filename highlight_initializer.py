@@ -23,6 +23,7 @@ from copy import deepcopy
 import numpy as np
 from math import factorial
 from sklearn.externals import joblib
+from utils import time, sec
 
 ROOT_PATH = os.path.dirname(os.path.realpath('__file__'))
 SIMILAR_WORDS = {"lul":"lol", "rofl":"lol", "lmao":"lol"}
@@ -118,13 +119,6 @@ def savitzky_golay(y, window_size, order, deriv=0, rate=1):
     lastvals = y[-1] + np.abs(y[-half_window-1:-1][::-1] - y[-1])
     y = np.concatenate((firstvals, y, lastvals))
     return np.convolve( m[::-1], y, mode='valid')
-
-def time(i):
-    return "%03d-%02d"%(i / 60, i % 60)
-
-def sec(i):
-    t = i.split('-')
-    return int(t[0]) * 60 + int(t[1])
 
 
 class DataLoader:

@@ -2,9 +2,19 @@ from math import factorial
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
-from highlight_initializer import *
+import highlight_initializer
 import numpy as np
 import copy
+from datetime import timezone, datetime, timedelta
+from scipy import stats
+import json
+
+def time(i):
+    return "%03d-%02d"%(i / 60, i % 60)
+
+def sec(i):
+    t = i.split('-')
+    return int(t[0]) * 60 + int(t[1])
 
 def plot_peak(dataset, f, selected_sliding_window, start_of_highlight):
     font_size = 33
@@ -35,11 +45,10 @@ def plot_peak(dataset, f, selected_sliding_window, start_of_highlight):
     re = sorted(re.items(), key=lambda x: x[0])
     x = [j[0] for j in re]
     y = np.asarray([j[1] for j in re])
-    yhat = savitzky_golay(y, win_size, polyorder)
-    p = get_peak(x, yhat)
+    yhat = highlight_initializer.savitzky_golay(y, win_size, polyorder)
+    p = highlight_initializer.get_peak(x, yhat)
     revised_x = []
     revised_y = []
-    print(x)
     for i in range(len(x)):
         revised_x.append(x[i])
         revised_y.append(yhat[i])
@@ -101,11 +110,80 @@ def plot_precision(prec_list, xLabel, yLabel, k, yScale, yTick):
     ax.grid(axis = 'y', linestyle='dotted')
 
     plt.ylim(yScale[0], yScale[1])
-    x_list = list(range(1, k + 1))
+    x_list = k
     plt.yticks(yTick, fontsize=18)
     plt.xticks(np.arange(min(x_list), max(x_list)+1, 1), fontsize=18)
 
     for prec in prec_list:
         plt.plot(x_list, prec[0], prec[1], label=prec[2], markersize=10)
     plt.legend(fontsize=15,loc=3, framealpha=0.3)
+    plt.show()
+
+def plot_trends():
+
+    with open('twitch.json') as f:
+        data = json.load(f)
+
+    all_videos = []
+    chats = []
+    viewers = []
+    recorded = []
+    end = datetime(2018, 10, 29, tzinfo=timezone(timedelta(hours=0)))
+    n = 0
+    for vl in data.values():
+        for v in vl:
+            n += 1
+            if float(v['chat_number']) / (float(v['length']) / 3600) > 100:
+                chats.append(float(v['chat_number']) / (float(v['length']) / 3600))
+                viewers.append(v['views'])
+                recorded.append(v['recorded'])
+    fig1, ax1 = plt.subplots(figsize=(7,3.5))
+    # f = plt.figure()
+    # plt.figure(1)
+    bins = 10 ** np.linspace(np.log10(100), np.log10(25000), 100)
+    ax1.set_xscale('log')
+    # n, bins, patches = plt.hist(chats, bins=bins)
+
+    ax1.xaxis.set_tick_params(labelsize=15)
+    ax1.yaxis.set_tick_params(labelsize=15)
+
+    counts, bin_edges = np.histogram(chats, bins=bins, normed=True)
+
+    cdf = np.cumsum (counts)
+    ax1.plot(bin_edges[1:], cdf/cdf[-1] * 100, label='cumulative distribution')
+    ax1.plot([500, 500], [0,100], label='threshold')
+
+    p = [500, cdf[29] / cdf[-1] * 100]
+
+    ax1.set_yticks([0, p[1], 40, 60, 80, 100])
+    ax1.set_xticks([100, 500, 1000, 10000, 25000])
+    ax1.axhline(p[1], linestyle='--', color='k')
+
+    ax1.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+    ax1.legend(fontsize=15, loc=2)
+    ax1.set_xlabel('# of chats/hour', fontsize=21)
+    ax1.set_ylabel('Percentage (%)', fontsize=21)
+    ax1.set_aspect(aspect=2)
+    # fig1.savefig('VideoSummarization/analysis/plots/chat_cdf.pdf', format='pdf', bbox_inches='tight')
+    fig2, ax2 = plt.subplots(figsize=(7,3.5))
+    f = plt.figure()
+
+    # plt.figure(2)
+    bins = 10 ** np.linspace(np.log10(100), np.log10(25000), 50)
+    ax2.set_xscale("log")
+    ax2.set_aspect(aspect=2)
+    counts, bin_edges = np.histogram(viewers, bins=bins, normed=True)
+    ax2.xaxis.set_tick_params(labelsize=15)
+    ax2.yaxis.set_tick_params(labelsize=15)
+    cdf = np.cumsum (counts)
+    ax2.plot(bin_edges[1:], cdf/cdf[-1] * 100, label='cumulative distribution')
+    ax2.plot([100, 100], [0,100], label='threshold')
+    ax2.set_xticks([100, 1000, 10000, 25000])
+    ax2.set_yticks([0, 20.0, 40.0, 60.0, 80.0, 100.0])
+    ax2.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+    ax2.yaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter('%.1f'))
+    ax2.legend(fontsize=15)
+    ax2.set_xlabel('# of viewers', fontsize=21)
+    ax2.set_ylabel('Percentage (%)', fontsize=21)
+    # fig2.savefig('VideoSummarization/analysis/plots/viewer_cdf.pdf', format='pdf', bbox_inches='tight')
     plt.show()

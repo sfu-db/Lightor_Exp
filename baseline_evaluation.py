@@ -1,7 +1,7 @@
 import sys
 import os
 import numpy as np
-from highlight_initializer import sec, time
+from utils import sec, time
 
 ROOT_PATH = os.path.dirname(os.path.realpath('__file__'))
 
@@ -39,7 +39,7 @@ def evaluate_baseline(k, file_name, gt):
     prec = [0] * k
     for f in file_list:
         data = np.load(os.path.join(path, f))
-        data = [[data[0][d] / 30, data[-1][d]] for d in range(len(data[0])) if data[2][d] == 1]
+        data = [[data[0][d] / 30, (1 - data[2][d]) - (1 - 2 * data[2][d]) * data[-1][d]] for d in range(len(data[0]))]
         data = sorted(data, key=lambda x:-x[-1])
         pred = []
         while len(pred) < 10 and len(data) > 0:
