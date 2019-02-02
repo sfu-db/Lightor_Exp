@@ -8,6 +8,7 @@ import copy
 from datetime import timezone, datetime, timedelta
 from scipy import stats
 import json
+import seaborn as sns
 
 def time(i):
     return "%03d-%02d"%(i / 60, i % 60)
@@ -119,6 +120,20 @@ def plot_precision(prec_list, xLabel, yLabel, k, yScale, yTick):
     plt.legend(fontsize=15,loc=3, framealpha=0.3)
     plt.show()
 
+def plot_behaviors(t):
+    with open('behavior_type.json') as f:
+        interval = json.load(f)
+
+    bins = np.arange(min(interval[t]) - 1, max(interval[t]) + 1, 5)
+    sns.distplot(interval[t], hist=True, kde=True,
+             bins=bins, color = 'darkblue',
+             hist_kws={'edgecolor':'black'},
+             kde_kws={'linewidth': 4})
+    plt.xlabel('Error of start time', fontsize=15)
+    plt.ylabel('Density', fontsize=15)
+    plt.yticks(fontsize=15)
+    plt.xticks(fontsize=15)
+    plt.show()
 def plot_trends():
 
     with open('twitch.json') as f:
