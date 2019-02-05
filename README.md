@@ -3,6 +3,7 @@ To reproduce all the experiments of Lightor system
 ## Demo
 See [here](https://ruochenj.com/channels/highlights/)
 
+Plots of experiments can be found [here](https://github.com/sfu-db/Lightor_Exp/blob/master/exp.ipynb)
 ## Environment Setup
 In order to reproduce the same results as in paper, Python 3.5 is required. We strong recommend you to set up a virtualenv using Anaconda to reproduce experiments:
 * Download and install [Anaconda](https://docs.anaconda.com/anaconda/install/)
@@ -32,3 +33,6 @@ In order to reproduce the same results as in paper, Python 3.5 is required. We s
   > jupyter notebook exp.ipynb
 ```
 * Change the kernel in notebook menu: `Kernel >> Change Kernel >> py35` and run the code blocks
+## Details
+* All crowdsourcing data has been anonymized. (e.g. replace Worker ID with W1)
+* For more details please refer to our [paper](http://www.sfu.ca/~ruochenj/files/papers/Lightor_paper.pdf) 
