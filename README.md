@@ -34,5 +34,5 @@ In order to reproduce the same results as in paper, Python 3.5 is required. We s
 ```
 * Change the kernel in notebook menu: `Kernel >> Change Kernel >> py35` and run the code blocks
 ## Details
-* All crowdsourcing data has been anonymized. (e.g. replace Worker ID with W1)
+* All crowdsourcing data has been anonymized. (e.g. replace Worker ID with W+number)
 * [paper](http://www.sfu.ca/~ruochenj/files/papers/Lightor_paper.pdf) 
