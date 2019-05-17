@@ -140,8 +140,9 @@ class DataLoader:
         self.gt = {}
         self.true_examples = []
         self.false_examples = []
+        self.start_time = {}
         chat_filename_list = os.listdir(chat_path)
-
+        flag = False
         for f in chat_filename_list:
             split_info = os.path.splitext(f)[0].split()
             # print (split_info)
@@ -149,6 +150,7 @@ class DataLoader:
                 continue
             key = split_info[0]
             start_time = int(int(split_info[1]) / 1000)
+            self.start_time[key] = start_time
             file_path = os.path.join(chat_path, f)
             chat_log = list(csv.reader(open(file_path), delimiter='\t'))
             for c in chat_log:
@@ -157,38 +159,41 @@ class DataLoader:
             self.chat[key] = chat_log
             self.file_list.append(key)
 
-        try:
-            for f in self.file_list:
+
+        for f in self.file_list:
+            try:
                 file_path = os.path.join(true_label_path, f + '.csv')
                 self.true_labels[f] = list(csv.reader(open(file_path), delimiter=' '))
                 gt = []
                 for j in self.true_labels[f]:
                     gt += list(range(sec(j[1]) - 10, sec(j[2]) + 1))
                 self.gt[f] = gt
-        except:
-            print ("no labels")
+            except:
+                print ("no labels for file", f)
+                flag = True
         self.get_top_n(para['num'], para['latency'], para['latency'], para['interval_time'])
 
-        for f in self.chat:
-            sliding_windows = self.sliding_windows[f]
-            for s in sliding_windows:
-                fea_vec = [s[4], s[5], s[6]]
-                if time(s[0]) in [i[0] for i in self.true_labels[f]]:
-                    fea_vec.append('T')
-                    self.true_examples.append(fea_vec)
-                else:
-                    fea_vec.append('F')
-                    self.false_examples.append(fea_vec)
+        if not flag:
+            for f in self.chat:
+                sliding_windows = self.sliding_windows[f]
+                for s in sliding_windows:
+                    fea_vec = [s[4], s[5], s[6]]
+                    if time(s[0]) in [i[0] for i in self.true_labels[f]]:
+                        fea_vec.append('T')
+                        self.true_examples.append(fea_vec)
+                    else:
+                        fea_vec.append('F')
+                        self.false_examples.append(fea_vec)
 
-        train_pos_num = int(len(self.true_examples) * 1)
-        train_neg_num = train_pos_num
-        random.shuffle(self.true_examples)
-        random.shuffle(self.false_examples)
-        self.train_set = []
-        self.train_set += self.true_examples[:train_pos_num]
-        self.train_set += self.false_examples[:train_neg_num]
-        self.train_x = [i[:-1] for i in self.train_set]
-        self.train_y = [i[-1] for i in self.train_set]
+            train_pos_num = int(len(self.true_examples) * 1)
+            train_neg_num = train_pos_num
+            random.shuffle(self.true_examples)
+            random.shuffle(self.false_examples)
+            self.train_set = []
+            self.train_set += self.true_examples[:train_pos_num]
+            self.train_set += self.false_examples[:train_neg_num]
+            self.train_x = [i[:-1] for i in self.train_set]
+            self.train_y = [i[-1] for i in self.train_set]
 
 
 
@@ -414,6 +419,9 @@ class Adjustment:
                             break
                 break
         expander = Expander(sliding_windows_list)
+        if len(pre_windows) == 0:
+            print(video_name)
+            print(time_stamp)
         expand_info = expander.expand(pre_windows, chat_len_threshold, **kwargs)
 
 

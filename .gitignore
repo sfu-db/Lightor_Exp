@@ -2,3 +2,6 @@
 .ipynb_checkpoints
 .DS_Store
 __pycache__
+Labeling/
+ENV/
+label_new_data.ipynb
