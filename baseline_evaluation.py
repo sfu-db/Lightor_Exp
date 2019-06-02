@@ -11,24 +11,9 @@ format (which we laballed in dataset) in our evaluation metrics (chat precision)
 We tried to make a fair comparison with baseline here.
 """
 
-extra_labels = {
-    'attackerdota-2017-07-31-02h34m10s': ['018-11'],
-    'attackerdota-2017-07-30-23h34m09s': ['026-08'],
-    'moonmeander-2017-07-03-19h17m57s': ['089-09', '082-15'],
-    'sing_sing-2017-08-01-09h09m34s': ['002-05' ],
-    'sing_sing-2017-08-01-10h09m35s': ['008-58', '043-24'],
-    'attackerdota-2017-07-31-01h34m09s': ['035-13', '037-58', '052-29'],
-    'moonmeander-2017-07-03-17h17m56s': ['021-34', '068-19'],
-    'nalcs_w2d2_DIG_FOX_g3':['016-01', '019-01', ],
-    'nalcs_w8d2_TL_P1_g2':['010-57', '019-22', '023-24', '041-48', '011-56'],
-    'nalcs_w8d2_TL_P1_g1':['017-31', '023-50'],
-    'nalcs_w2d2_DIG_FOX_g2':['026-26'],
-    'nalcs_w2d2_P1_NV_g1': ['042-38', '039-42'],
-    'nalcs_w8d2_NV_DIG_g1' : ['038-08'],
-    'nalcs_w8d2_NV_DIG_g2' : ['048-22', '046-51']
-}
 
-def evaluate_baseline(k, file_name, gt):
+
+def evaluate_baseline(k, file_name, dataset):
     path = os.path.join(ROOT_PATH, 'baseline_results', file_name)
     file_list = []
     try:
@@ -52,12 +37,7 @@ def evaluate_baseline(k, file_name, gt):
                     break
             if flag:
                 pred.append(cur)
-        all_gt = []
-        for i in gt[f.split('.')[0]]:
-            all_gt += list(range(sec(i[0]), sec(i[0]) + 26))
-        for i in extra_labels[f.split('.')[0]]:
-            all_gt += list(range(sec(i), sec(i) + 26))
         for i in range(1, k + 1):
             pre = pred[:i]
-            prec[i - 1] += len([k for k in pre if k in all_gt or k + 6 in all_gt])
+            prec[i - 1] += len([p for p in pre if p in dataset.start_gt[f.split('.')[0]]])
     return [prec[i] / ((i + 1) * len(file_list)) for i in range(k)]
