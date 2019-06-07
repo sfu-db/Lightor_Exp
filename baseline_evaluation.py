@@ -22,6 +22,7 @@ def evaluate_baseline(k, file_name, dataset):
         print('No such file')
         return
     prec = [0] * k
+    remaining = {}
     for f in file_list:
         data = np.load(os.path.join(path, f))
         data = [[data[0][d] / 30, (1 - data[2][d]) - (1 - 2 * data[2][d]) * data[-1][d]] for d in range(len(data[0]))]
@@ -40,4 +41,5 @@ def evaluate_baseline(k, file_name, dataset):
         for i in range(1, k + 1):
             pre = pred[:i]
             prec[i - 1] += len([p for p in pre if p in dataset.start_gt[f.split('.')[0]]])
-    return [prec[i] / ((i + 1) * len(file_list)) for i in range(k)]
+        remaining[f] = [p for p in pred[:10] if p not in dataset.start_gt[f.split('.')[0]]]
+    return [prec[i] / ((i + 1) * len(file_list)) for i in range(k)], remaining

@@ -28,7 +28,7 @@ from utils import time, sec
 ROOT_PATH = os.path.dirname(os.path.realpath('__file__'))
 SIMILAR_WORDS = {"lul":"lol", "rofl":"lol", "lmao":"lol"}
 FIGURE_NUMBER = 1
-random.seed(1)
+
 
 
 def get_peak(x, y):
@@ -38,9 +38,9 @@ def get_peak(x, y):
     re = []
     for i in range(len(x)):
         if  i == 0 and y[i] > y[i + 1]:
-            re.append([x[i], y[i]])
+            re.append([x[i], y[i], i])
         elif i < len(x) - 1 and y[i] > y[i + 1] and y[i] > y[i - 1]:
-            re.append([x[i], y[i]])
+            re.append([x[i], y[i], i])
     p = max(re[::-1], key=lambda x: x[1])
     return p
 
@@ -143,7 +143,7 @@ class DataLoader:
         self.start_time = {}
         self.chat_filename_list = list(reversed(sorted(os.listdir(chat_path))))
         if subfiles:
-            self.chat_filename_list = subfiles
+            self.chat_filename_list = reversed(sorted(subfiles))
         for f in self.chat_filename_list:
             split_info = os.path.splitext(f)[0].split()
             # print (split_info)
@@ -153,7 +153,7 @@ class DataLoader:
             start_time = int(int(split_info[1]) / 1000)
             self.start_time[key] = start_time
             file_path = os.path.join(chat_path, f)
-            chat_log = list(csv.reader(open(file_path), delimiter='\t'))
+            chat_log = list(csv.reader(open(file_path, 'r', encoding='utf8'), delimiter='\t'))
             for c in chat_log:
                 c[5] = int(int(c[5]) / 1000 - start_time)
             chat_log = sorted(chat_log, key=lambda x:x[5])
@@ -206,6 +206,7 @@ class DataLoader:
 
             train_pos_num = int(len(self.true_examples) * 1)
             train_neg_num = train_pos_num
+            random.seed(1)
             random.shuffle(self.true_examples)
             random.shuffle(self.false_examples)
             self.train_set = []
@@ -261,13 +262,12 @@ class DataLoader:
         chosen_windows = [r for r in chosen_windows if r[-1] != 0]
 
         self._get_features(chosen_windows)
-        self._normalization(chosen_windows, [2, 4, 5, 6])
+        self._normalization(chosen_windows, [4, 5, 6])
         chosen_windows = sorted(chosen_windows, key=lambda x:x[0])
         return chosen_windows
 
     def _get_features(self, chosen_windows):
-        for r in range(len(chosen_windows)):
-            row = chosen_windows[r]
+        for row in chosen_windows:
             word_set = set()
             word_list = []
             vector_list = []
@@ -282,7 +282,7 @@ class DataLoader:
                 word_list.append(word)
                 word_set = word_set.union(set(word))
             row.append(sum(len_list) / float(len(len_list)))
-
+            row[2] = word_set
             for c in word_list:
                 vector = []
                 for w in word_set:
@@ -354,6 +354,30 @@ def apply_model(model, test_data, interval, fea_vec):
                 re.append(cur[0])
         test_data.predicted_labels[f] = re[:10]
 
+def get_pre_windows(video_name, data, time_stamp):
+        pre_windows = []
+        sliding_windows_list = data.sliding_windows[video_name]
+        comments = data.chat[video_name]
+        for i in range(len(sliding_windows_list)):
+            if sliding_windows_list[i][0] == sec(time_stamp):
+                if i == 0:
+                    pre_windows = deepcopy([sliding_windows_list[i]])
+                else:
+                    pre_windows = deepcopy(sliding_windows_list[i - 1 : i + 1])
+                    curr_win = sliding_windows_list[i]
+                    for c in comments:
+                        if c[5] > pre_windows[0][1] and c[5] < pre_windows[1][0]:
+                            pre_windows[0][3].append([c[3], c[2], c[5]])
+                        elif c[5] >= pre_windows[1][0]:
+                            break
+                break
+        if len(pre_windows) == 0:
+            print(video_name)
+            print(time_stamp)
+
+
+        return pre_windows
+
 class Adjustment:
     """
     Used for doing adjustment
@@ -363,17 +387,16 @@ class Adjustment:
         self.const = None
         self.labels_by_video = {}
         self.all_labels = []
-        self.gt = []
 
         for f in self.data.true_labels:
             self.labels_by_video[f] = [[l[0], sec(l[1]), sec(l[2])]
-                                       for l in self.data.true_labels[f] if l[0] != '000-00']
+                                       for l in self.data.true_labels[f] if l[0] != '000-00' and l[1] != '000-00']
 
             for t in self.labels_by_video[f]:
-                pre, expand_info = self._get_pre_windows(f, self.data, t[0], **kwargs)
+                pre = get_pre_windows(f, self.data, t[0])
+                expand_info = self._generate_one_peak(pre, kwargs['bin_size'], kwargs['win_size'], kwargs['polyorder'])
                 t.append(expand_info)
                 self.all_labels.append(t)
-                self.gt += list(range(t[1] - 10, t[2] + 11))
 
     def aug_max(self, t):
         mean_gap = int(sum([(i[3] - i[2] + (i[2] - i[1] + 10) / 2) for i in t]) / len(t))
@@ -409,52 +432,16 @@ class Adjustment:
         for f in data.predicted_labels:
             for t in data.predicted_labels[f]:
                 if len(t) >= 3:
-                    t[2] = t[2] - self.const[0]
+                    t[2] = t[1] - self.const[0]
                 else:
                     t.append(t[1] - self.const[0])
 
-    def generate_peak(self, data, **kwargs):
-        labels_by_video = {}
+    def generate_peaks(self, data, **kwargs):
         for f in data.predicted_labels:
             for i, t in enumerate(data.predicted_labels[f]):
-                pre, expand_info = self._get_pre_windows(f, data, time(t), **kwargs)
+                pre = get_pre_windows(f, data, time(t))
+                expand_info = self._generate_one_peak(pre, kwargs['bin_size'], kwargs['win_size'], kwargs['polyorder'])
                 data.predicted_labels[f][i] = [t, expand_info]
-
-    def _get_pre_windows(self, video_name, data, time_stamp, **kwargs):
-        chat_len_threshold = 25
-        pre_windows = []
-        sliding_windows_list = data.sliding_windows[video_name]
-        comments = data.chat[video_name]
-        for i in range(len(sliding_windows_list)):
-            if sliding_windows_list[i][0] == sec(time_stamp):
-                if i == 0:
-                    pre_windows = deepcopy([sliding_windows_list[i]])
-                else:
-                    pre_windows = deepcopy(sliding_windows_list[i - 1 : i + 1])
-                    curr_win = sliding_windows_list[i]
-                    for c in comments:
-                        if c[5] > pre_windows[0][1] and c[5] < pre_windows[1][0]:
-                            pre_windows[0][3].append([c[3], c[2], c[5]])
-                        elif c[5] >= pre_windows[1][0]:
-                            break
-                break
-        expander = Expander(sliding_windows_list)
-        if len(pre_windows) == 0:
-            print(video_name)
-            print(time_stamp)
-        expand_info = expander.expand(pre_windows, chat_len_threshold, **kwargs)
-
-
-        return pre_windows, expand_info
-
-
-class Expander:
-    def __init__(self, sliding_windows_list):
-        self.sliding_windows_list = sliding_windows_list
-    def expand(self, windows, l, **kwargs):
-        re = self._expand_by_peak(windows, kwargs['bin_size'], kwargs['win_size'], kwargs['polyorder'])
-        return re
-
 
     def _bin(self, size, windows):
         re = {}
@@ -481,7 +468,7 @@ class Expander:
         re = sorted(re.items(), key=lambda x: x[0])
         return re
 
-    def _expand_by_peak(self, windows, bin_size, win_size, polyorder):
+    def _generate_one_peak(self, windows, bin_size, win_size, polyorder):
         re = self._bin(bin_size, windows)
         x = [j[0] for j in re]
         y = np.asarray([j[1] for j in re])
