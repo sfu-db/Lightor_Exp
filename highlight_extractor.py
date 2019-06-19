@@ -4,7 +4,10 @@ import math
 from utils import time, sec
 import os
 from collections import OrderedDict
-from parameters import FILTER_INTERVAL, SELECTION_THRESHOLD, ERROR_THRESHOLD, GRAPH_LOWER_BOUND_LENGTH, FEATURE_VECTOR
+from parameters import *
+import copy
+import highlight_initializer
+import random   
 
 FILTER_INTERVAL = 60
 CROWD_DATA_PATH = os.path.join(os.path.dirname(os.path.realpath('__file__')), 'dataset', 'Crowdsourcing')
@@ -12,6 +15,42 @@ INTERACTIONS = []
 with open(os.path.join(CROWD_DATA_PATH, 'interaction.csv'), 'r', newline='') as csvfile:
     spamreader = csv.reader(csvfile, delimiter=' ', quotechar='|')
     INTERACTIONS = [r for r in spamreader]
+
+def check_prec(d, dataset):
+    start = []
+    end = []
+    for v in d:
+        f = DOTA2_MOVIE_NAME_BY_ID[v]
+        if d[v][0] in dataset.start_gt[f]:
+            start.append(1)
+        else:
+            start.append(0)
+        if d[v][1] in dataset.end_gt[f]:
+            end.append(1)
+        else:
+            end.append(0)
+    return np.mean(start), np.mean(end)
+
+def transfer(time_list):
+    re = []
+    i = 0
+    while (i < len(time_list) - 1):
+        if time_list[i + 1] - time_list[i] <= 1.5 and time_list[i + 1] > time_list[i]:
+            if len(re) == 0 or re[-1].state != "PL":
+                re.append(PL(time_list[i], time_list[i + 1]))
+            else:
+                re[-1].change_end(time_list[i])
+        elif time_list[i + 1] < time_list[i]:
+            if len(re) != 0 and re[-1].state == "PL":
+                re[-1].change_end(time_list[i])
+            re.append(SB(time_list[i + 1]))
+        elif time_list[i + 1] - time_list[i] > 1.5:
+            if len(re) !=0 and re[-1].state == "PL":
+                re[-1].change_end(time_list[i])
+            re.append(SF(time_list[i + 1]))
+        i += 1
+    return re
+
 
 class PL:
     def __init__(self, s, e):
@@ -57,26 +96,6 @@ class Highlight_Extractor:
         self.feature_vector = FEATURE_VECTOR
         self.data_lineage = original_data
         self.assignments = {}
-    def _transfer(self, time_list):
-        re = []
-        i = 0
-        while (i < len(time_list) - 1):
-            if time_list[i + 1] - time_list[i] <= 1.5 and time_list[i + 1] > time_list[i]:
-                if len(re) == 0 or re[-1].state != "PL":
-                    re.append(PL(time_list[i], 0))
-                else:
-                    re[-1].change_end(time_list[i])
-            elif time_list[i + 1] < time_list[i]:
-                if len(re) != 0 and re[-1].state == "PL":
-                    re[-1].change_end(time_list[i])
-                re.append(SB(time_list[i + 1]))
-            elif time_list[i + 1] - time_list[i] > 1.5:
-                if len(re) !=0 and re[-1].state == "PL":
-                    re[-1].change_end(time_list[i])
-                re.append(SF(time_list[i + 1]))
-            i += 1
-
-        return re
 
     def _overlap(self, p1, p2):
         return not (p1[0].start >= p2[0].end or p2[0].start >= p1[0].end)
@@ -181,7 +200,7 @@ class Highlight_Extractor:
         for movie_id in list(visit_dic):
             for visit_id in list(visit_dic[movie_id]):
                 flag = True
-                visit_dic[movie_id][visit_id] = self._transfer(visit_dic[movie_id][visit_id])
+                visit_dic[movie_id][visit_id] = transfer(visit_dic[movie_id][visit_id])
                 for op in visit_dic[movie_id][visit_id]:
                     if op.state == 'PL'and op.duration >= 100:
                         flag = False
@@ -226,3 +245,189 @@ class Highlight_Extractor:
         for i in range(1, iter + 1):
             file_name = 'experiments_dota_{0}.csv'.format(i)
             self._process_one_iter(file_name)
+
+
+class Score:
+    def __init__(self, start, end):
+        self.start = start
+        self.end = end
+        self.__len__ = end - start + 1
+        self.score_arr = np.zeros(self.__len__)
+
+    def pos(self):
+        self.score_arr = np.ones(self.__len__)
+
+    def neg(self):
+        self.score_arr = np.negative(np.ones(self.__len__))
+    
+
+
+class Baselines:
+    def __init__(self, ORIGINAL_DATA):
+        self.vid = {}
+        self.bf_bound = []
+        self.pl_bound = []
+        self.original_data = ORIGINAL_DATA
+
+    def _get_inters_per_iter(self, answer_file, ratio):
+        assignment_ids = []
+        hl_ids = copy.deepcopy(tuple(self.original_data['remaining'].keys()))
+        assignments_hl = dict.fromkeys(hl_ids)
+        hl_inter = dict.fromkeys(hl_ids)
+        with open(answer_file, 'r') as csvfile:
+            spamreader = csv.reader(csvfile, delimiter=' ', quotechar='|')
+            for row in spamreader:
+                assignment_ids.append(row[0])
+            # print(len(assignment_ids))
+        random.shuffle(assignment_ids)
+        assignment_ids = assignment_ids[:int(len(assignment_ids) * ratio)]
+
+        for interaction in INTERACTIONS:
+            hl_id = interaction[2]
+            as_id = interaction[1]
+            time_stamp = round(float(interaction[0]))
+            
+            if as_id in assignment_ids:
+                if hl_id in assignments_hl:
+                    if assignments_hl[hl_id] is None:
+                        assignments_hl[hl_id] = {}
+                    else:
+                        if as_id in assignments_hl[hl_id]:
+                            assignments_hl[hl_id][as_id].append(time_stamp)
+                        else:
+                            assignments_hl[hl_id][as_id] = [time_stamp]
+                else:
+                    print("hl not in parameter.py file")
+
+        for hl_id, as_dict in assignments_hl.items():
+            if as_dict is not None:
+                time_lists = list(as_dict.values())
+                inters_list = []
+                for time_list in time_lists:
+                    inters = transfer(time_list)
+                    first_pl_pos = 0
+                    if inters:
+                        for idx, inter in enumerate(inters):
+                            if inter.state == 'PL':
+                                first_pl_pos = idx
+                                break
+                            else:
+                                first_pl_pos += 1
+                        inters = inters[first_pl_pos:]
+                        if len(inters) >= 1:
+                            inters_list.append(inters)
+                hl_inter[hl_id] = inters_list
+            else:
+                hl_inter.pop(hl_id)
+        return assignments_hl, hl_inter
+
+    def _merge_2_scores(self, score1, score2):
+        new_start = min(score1.start, score2.start)
+        start_gap = abs(score1.start - score2.start)
+        new_end = max(score1.end, score2.end)
+        new_score = Score(new_start, new_end)
+        if score1.start == new_start:
+            new_score.score_arr[:len(score1.score_arr)] += score1.score_arr
+            new_score.score_arr[start_gap:start_gap+len(score2.score_arr)] += score2.score_arr
+        else:
+            new_score.score_arr[:len(score2.score_arr)] += score2.score_arr
+            new_score.score_arr[start_gap:start_gap+len(score1.score_arr)] += score1.score_arr
+        return new_score
+
+    def _backward_forward_score(self, inters_list):
+        start = inters_list[0][0].start
+        end = inters_list[0][0].end
+        final_score = Score(start, end)
+        for i in range(len(inters_list)):
+            start = inters_list[i][0].start
+            end = inters_list[i][0].end
+            score_per_as = Score(start, end)
+            for j in range(len(inters_list[i]) - 1):
+                if inters_list[i][j].state == 'PL':
+                    start = inters_list[i][j].end
+                    end = inters_list[i][j+1].seek
+                    if inters_list[i][j+1].state == 'SF':
+                        curr_score = Score(start, end)
+                        curr_score.neg()
+                    elif inters_list[i][j+1].state == 'SB':
+                        curr_score = Score(end, start)
+                        curr_score.pos()
+                else:
+                    start = inters_list[i][j].seek
+                    if inters_list[i][j+1].state == 'SF':
+                        end = inters_list[i][j+1].seek
+                        curr_score = Score(start, end)
+                        curr_score.neg()
+                    elif inters_list[i][j+1].state == 'SB':
+                        end = inters_list[i][j+1].seek
+                        curr_score = Score(end, start)
+                        curr_score.pos()
+                    else:
+                        end = inters_list[i][j+1].start
+                        curr_score = Score(start, end)
+                score_per_as = self._merge_2_scores(score_per_as, curr_score)
+            final_score = self._merge_2_scores(final_score, score_per_as)
+        return final_score
+
+    def _play_score(self, inters_list):
+        start = inters_list[0][0].start
+        end = inters_list[0][0].end
+        score = Score(start, end)
+        for i in range(len(inters_list)):
+            for j in range(len(inters_list[i])):
+                if inters_list[i][j].state == 'PL':
+                    start = inters_list[i][j].start
+                    end = inters_list[i][j].end
+                    curr_score = Score(start, end)
+                    curr_score.pos()
+                    score = self._merge_2_scores(score, curr_score)
+        return score
+    
+    # def _pl_smooth_score(self, some_score):
+    #     smoothed_score = sm.nonparametric.lowess(some_score.score_arr, range(some_score.start, some_score.end + 1), frac=0.1 ,return_sorted=True)
+    #     return smoothed_score.T
+
+    def get_baseline_score(self, ratio):
+        answer_folder = os.path.join(CROWD_DATA_PATH, 'answers')
+        exp_files = [os.path.join(answer_folder, i) for i in os.listdir(answer_folder)]
+        exp_files.sort()
+        exp_files = exp_files[:1]
+        bf_bound = []
+        pl_bound = []
+        for exp in exp_files:
+            _ , hl_inter = self._get_inters_per_iter(exp, ratio)
+            bf_bound_iter = {}
+            pl_bound_iter = {}
+            for hl in hl_inter:
+                # bf bound
+                bf_score_per_hl = self._backward_forward_score(hl_inter[hl])
+                bf_score_per_hl.score_arr = highlight_initializer.savitzky_golay(bf_score_per_hl.score_arr, window_size=9, order=4)
+                bf_peak_idx = np.argmax(bf_score_per_hl.score_arr)
+                bf_peak_pos = range(bf_score_per_hl.start, bf_score_per_hl.end + 1)[bf_peak_idx]
+                hl_bound = [max(0, bf_peak_pos - 10), bf_peak_pos + 10]
+                bf_bound_iter[hl] = hl_bound
+                # pl bound
+                pl_score_per_hl_non_smooth = self._play_score(hl_inter[hl])
+                pl_score_per_hl = pl_score_per_hl_non_smooth
+                pl_score_per_hl.score_arr = highlight_initializer.savitzky_golay(pl_score_per_hl_non_smooth.score_arr, window_size=9, order=4)
+                peak_idx = int(np.argmax(pl_score_per_hl.score_arr))
+                start_bound_idx = peak_idx
+                end_bound_idx = peak_idx
+                for i in range(peak_idx, -1, -1):
+                    if pl_score_per_hl.score_arr[i] <= pl_score_per_hl.score_arr[start_bound_idx]:
+                        start_bound_idx = i
+                    else:
+                        break
+                for j in range(peak_idx, len(pl_score_per_hl.score_arr)):
+                    if pl_score_per_hl.score_arr[j] <= pl_score_per_hl.score_arr[end_bound_idx]:
+                        end_bound_idx = j
+                    else:
+                        break
+                pl_range = range(pl_score_per_hl.start, pl_score_per_hl.end + 1)
+                pl_bound_iter[hl] = [pl_range[start_bound_idx], pl_range[end_bound_idx]]
+            # print(bf_bound_iter, pl_bound_iter)
+            bf_bound.append(bf_bound_iter)
+            pl_bound.append(pl_bound_iter)
+            self.bf_bound = bf_bound
+            self.pl_bound = pl_bound
+        
